@@ -22,7 +22,7 @@ The clean document is the same as the with functions document, but without comme
 ### Csv_import
 The CSV import documnet is an example of how to load in your own data and fit it with the program.
 
-### Chemfit
+## Chemfit
 This program is for getting high quality fits for the systems screened with chemscreen.
 
 ### From_research
