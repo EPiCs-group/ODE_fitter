@@ -3,7 +3,7 @@ This repository is for screening and fitting chemical kinetic data with differen
 
 The program consists of chemscreen and chemfit. Chemscreen is for screening a lot of similar systems on data consecutively to find agreeable models, Chemfit is to take those models and the the absolute best fit. If the fit is accurate it will result in uncovering all rate constants and even activation energies and Arrhenius pre-factors.
 
-![Basic structure image](Figures/parallel_fit_compound_figure.csv "Basic structure image")
+![Parallel fitting image](Figures/parallel_fit_compound_figure.svg "Fitting image")
 
 ## Chemscreen
 This is a tool for screening many alike chemical systems. The principle is explained in the figure
