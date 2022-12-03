@@ -1,7 +1,5 @@
 # plot, make loop over values but cut off unnecessary data for simulated datasets
 import numpy as np
-from scipy.optimize import curve_fit
-from scipy.integrate import odeint
 from scipy import integrate
 import matplotlib.pyplot as plt
 from lmfit import minimize, Parameters, Parameter, report_fit
