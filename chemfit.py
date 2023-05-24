@@ -6,6 +6,7 @@ from lmfit import minimize, Parameters, Parameter, report_fit
 from sklearn.metrics import r2_score
 import random
 import progressbar
+import regex
 
 def change_coord(data,names):
     "Changes the concentration vs time values to the rate vs time values for more precise fitting"
@@ -280,5 +281,161 @@ class fitting_set:
         return final_table
                 
             
+def make_system(reactions):
+    unique = []
+    for reaction in reactions:
+        terms = regex.findall("(?i)[a-z]+\d*", reaction)
+        unique.append(terms)
+    unique = [item for sublist in unique for item in sublist]
+    unique = sorted(set(unique), key=unique.index)
+    unique = list(unique)
+    firstline = ""
+    lastline = ""
+    for item in unique:
+        firstline += f'C{item},'
+        lastline += f'd{item}dt,'
+    firstline = firstline[:-1]
+    firstline += "= init"
+    lastline = lastline [:-1]
+    lastline = f'    return {lastline}'
+    
+    before_equals = ""
+    after_equals = ""
+    for i in range(len(reactions)):
+        before_equals += f"k{i+1},"
+        after_equals += f"rate_const['k{i+1}'],"
+    before_equals = before_equals[:-1]
+    after_equals = after_equals[:-1]
+    second_line = before_equals + " = " + after_equals
+    
+    differentials = []
+    for item in unique:
+        item = f'd{item}dt'
+        differentials.append(f'{item} =')
+    
+    diff_dict = {}
+    i = 1
+    for differential in differentials:
+        diff_dict[differential] = i
+        i+=1
+    
+    reactdict = {}
+    i =1
+    arrows = {}
+    for reaction in reactions:
+        matches = regex.finditer("\S+", reaction)
+        sublist = []
+        for match in matches:
+            if match.group() == "->":
+                arrows[i] = match.span()[0]
+            if match.group() != "+":
+                if match.group() != "->":
+                    sublist.append([match.group(),match.span()])
+        reactdict[f"r{i}"] = sublist
+        i+=1
+    
+    reaction_num = 1    
+    for reaction in reactdict.items():
+        reaction_string_before = f"k{reaction_num}"
+        arrow_digit = arrows[reaction_num]
+        to_add_before = {}
+        for pair in reaction[1]:
+            for component in diff_dict.items():
+                pair_to_compare = pair[0]
+                component_to_compare = component[0][1:-4]
+                digit = 1
+                if pair_to_compare[0].isdigit():
+                    digits_start = 0
+                    digits_end = 1
+                    i=1
+                    while pair_to_compare[i].isdigit():
+                        digits_end +=1
+                        i+=1
+                    digit = pair_to_compare[digits_start:digits_end]
+                    pair_to_compare = pair_to_compare[digits_end:]
+                if pair_to_compare == component_to_compare:
+                    if pair[1][0] < arrow_digit:
+                        to_add_before[component[1]] = int(digit)
+                        reaction_string_before= reaction_string_before + f"*C{pair_to_compare}"
+                    else:
+                        to_add_after[component[1]] = int(digit)
+        reaction_num += 1
+        for addition in to_add_before.items():
+            differentials[addition[0]-1] += " "
+            differentials[addition[0]-1]+= "- "
+            if addition[1] != 1:
+                differentials[addition[0]-1] += f'{str(addition[1])}*'
+            differentials[addition[0]-1] += f"{reaction_string_before}"
+        for addition in to_add_after.items():
+            differentials[addition[0]-1] += " "
+            if differentials[addition[0]-1][-2] != '=':
+                differentials[addition[0]-1] += '+ '
+            if addition[1] != 1:
+                differentials[addition[0]-1] += f'{str(addition[1])}*'
+            differentials[addition[0]-1] += f"{reaction_string_before}"
+    
+    function_string = "def diff(x, init, rate_const):\n"
+    function_string += f"    {firstline}\n"
+    function_string += f"    {second_line}\n"
+    for differential in differentials:
+        function_string += f"    {differential}\n"
+    function_string += lastline
+    
+    return function_string
+
+def graph_result(diff, result, timespan, init, temperature, labels):
+    R = 8.314 #needed for arrhenius equation
+    arrs = [float(item) for item in result['Arrhenius constant']]
+    E_acts = [float(item) for item in result['E_act']]
+    i = 0
+    rate_dict ={}
+    for i in range(len(result['rate'])):
+        rate_dict[result['rate'][i]] = arrs[i]*np.exp((-E_acts[i])/(R*temperature))
+        i+=1
+    sol = integrate.solve_ivp(diff, [0,timespan[-1]], init, args = (rate_dict,), t_eval = timespan)
+    plt.figure()
+    i = 0
+    for line in sol.y:
+        plt.plot(sol.t,line, label = labels[i])
+        i += 1
+    plt.legend()
+    
+def make_data(system,timespan ,Ts,inits,ks,kin_params = None,var_noise = 0, stat_noise = 0):
+    "Makes a dataset out of the specified kinetic parameters, times, temperatures, and initial conditions, with noise if specified"
+    time = timespan[-1]
+    
+    if kin_params:
+        pre_consts = get_A(ks,kin_params,Ts[0])
         
+    
+    sol_list = []
+    noisy_data_lists = []
+    for init in inits:
+        for T in Ts:
+            noisy_data = []
+            if kin_params != None:
+                rate_consts = pre_consts*np.exp(-np.array(kin_params)/(R*T))
+            else:
+                rate_consts = ks
+            sol = integrate.solve_ivp(system, [0,time], init, t_eval = timespan, args=[rate_consts])
+            indexes = []
+            
+            for i in range(len(sol.y)):
+                if sol.y[i][-1] == sol.y[i][0]:
+                    indexes.append(i)
+            indexes.reverse()
+            sol.y = list(sol.y)
+            if indexes != []:
+                for index in indexes:
+                    del sol.y[index]
+                sol.y = np.array(sol.y)
+            for line in sol.y:
+                static_noise,variable_noise = get_noise(timespan,var_noise,stat_noise)
+                noisy_data.append(line + static_noise + np.multiply(line,variable_noise))
+            data_dict = {"t" : timespan, "y": noisy_data, "T": T, "init" : init}
+            noisy_data_lists.append(data_dict)
+            
+
         
+    noisy_data_lists = np.array(noisy_data_lists)
+    return noisy_data_lists

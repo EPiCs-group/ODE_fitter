@@ -15,7 +15,7 @@ pip install progressbar2 (import as progressbar)
 
 ![Parallel fitting image](Figures/parallel_fit_compound_figure.svg "Fitting image")
 
-## Chemscreen
+## ChemKinScreen
 This is a tool for screening many alike chemical systems. The principle is explained in the figure
 
 ![Basic structure image](Figures/for_users_alg_struct.png "Basic structure image")
